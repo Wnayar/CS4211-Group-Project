@@ -1,0 +1,88 @@
+✅ Variables USED (in the simplified model)
+
+currentPosition : POS (≙ ℕ × ℕ)
+Used for rover navigation state; checked against obstacles; compared to goal/charger.
+
+goal : POS (≙ ℕ × ℕ)
+Used as the mission destination (Scenario 1) and to decide when mission completes.
+
+obstacles : ℙ POS
+Used to prevent collisions (SL4) and as the fixed obstacle set (simplified V2).
+
+visionObstacles : ℙ POS
+Used only to satisfy V2’s “Vision maintains position” assumption; in simplified scope we set visionObstacles = obstacles (fixed obstacles, no detection).
+
+chargers : ℙ POS
+Used for HI2 charging: rover may only charge at a charger location.
+
+batteryLevel : 0..MAXBATTERY (modeled as ℕ bounded; Table says float)
+Used for SL1 (never run out), HI1 (decide recharge), and per-move battery consumption.
+
+recharge : BOOL
+Used for HI1/HI2: when true rover diverts to charger and must stay charging until full.
+
+chargingComplete : BOOL
+Used to decide when charging ends; typically chargingComplete ↔ batteryLevel = MAXBATTERY.
+
+atGoal : BOOL
+Used to indicate goal reached and enable completion notification (G6).
+
+failure : BOOL
+Used to trigger Scenario 2: entering FailureMode and performing recovery actions (G7/SL3).
+
+identifiedFailure : MESSAGE
+Used to record what failure occurred (abstract classification) when failure happens.
+
+command : MESSAGE
+Used to represent the chosen recovery action (e.g., reboot vs request help) during failure mode.
+
+helperID : ℕ (with constraint helperID ∈ {0,2,3}, and valid helpers {2,3})
+Used for CR3: ground station dispatches helper ID; main rover authenticates arriving helper before accepting intervention.
+
+return2NormalOperation : BOOL
+Used to mark successful recovery (after reboot or authenticated help).
+
+systemState : SYSTEMSTATE (≙ BOOL × BOOL × ℙ MESSAGE)
+Used as a packaged status summary for reporting; in simplified model we mainly ensure its failure flag matches failure.
+
+communicationData : COMMDATA (≙ ℙ MESSAGE × DATACOLLECTED × SYSTEMSTATE)
+Used to model “notify completion + send data” (G6) and “notify failure mode” (G7) as bundled transmissions.
+
+
+❌ Variables NOT USED (out of simplified scope)
+
+safeLocation : POS (≙ ℕ × ℕ)
+Full model’s recovery fallback location; not required by simplified requirements.
+
+prioritisedGoals : ℙ POS
+Full model supports multiple/priority goals; simplified model uses a single goal.
+
+invalidMap : MESSAGE
+MapValidator subsystem; not part of simplified scenarios 1–2 requirements.
+
+completed : MESSAGE (as a standalone state variable)
+In simplified model it’s better treated as a message value inside communicationData.messages, not a separate stored variable.
+
+noMoreViablePlans : MESSAGE
+Planner failure notification; not required because planning is abstracted away.
+
+failureModeInvoked : MESSAGE (as a standalone state variable)
+Same as completed: treated as a message value/event rather than stored variable.
+
+noplan : BOOL
+Planner failure flag; out of scope because we don’t implement full planning.
+
+plan2C : seq POS
+Explicit charger-route plan list; not required when navigation is modeled step-by-step.
+
+plan2D : seq POS
+Explicit destination-route plan list; not required when navigation is modeled step-by-step.
+
+recheck : BOOL
+WaitForHelp periodic polling/retry mechanism; optional complexity beyond simplified CR3.
+
+GSObstacles : ℙ POS
+Ground station’s obstacle set; out of scope (we assume environment obstacles are fixed and consistent).
+
+failed2Reconnect : BOOL
+Communication reconnection failure; not required by simplified requirements.

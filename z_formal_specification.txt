@@ -1,0 +1,151 @@
+//Basic types
+[DATACOLLECTED]
+[MESSAGE]
+
+POS == ℕ × ℕ
+
+SYSTEMSTATE == BOOL × BOOL × ℙ MESSAGE
+COMMUNICATIONDATA ==
+   ℙ MESSAGE × DATACOLLECTED × SYSTEMSTATE
+
+MAX_BATTERY : ℕ
+MAX_BATTERY = 5
+
+
+//Rover state schema
+RoverState
+------------------------------------------------
+currentPosition : POS
+goal            : POS
+obstacles       : ℙ POS
+visionObstacles : ℙ POS
+chargers        : ℙ POS
+safeLocation    : POS
+
+batteryLevel    : ℕ
+chargingComplete: BOOL
+recharge        : BOOL
+
+failure         : BOOL
+identifiedFailure : MESSAGE
+command           : MESSAGE
+helperID          : ℕ
+return2NormalOperation : BOOL
+
+atGoal          : BOOL
+noplan          : BOOL
+
+prioritisedGoals: ℙ POS
+plan2D, plan2C  : seq POS
+
+systemState     : SYSTEMSTATE
+communicationData : COMMUNICATIONDATA
+
+recheck         : BOOL
+GSObstacles     : ℙ POS
+failed2Reconnect: BOOL
+------------------------------------------------
+batteryLevel ∈ 0..MAX_BATTERY
+chargingComplete ⇔ batteryLevel = MAX_BATTERY
+
+currentPosition ∉ obstacles
+goal ∉ obstacles
+
+visionObstacles = obstacles
+GSObstacles = obstacles
+
+helperID ∈ {0,2,3}
+
+
+//Initial state
+InitRover
+RoverState
+------------------------------------------------
+batteryLevel = MAX_BATTERY
+chargingComplete = TRUE
+recharge = FALSE
+failure = FALSE
+atGoal = FALSE
+noplan = FALSE
+helperID = 0
+visionObstacles = obstacles
+GSObstacles = obstacles
+goal ∈ prioritisedGoals
+goal ∉ obstacles
+currentPosition ∉ obstacles
+
+
+//Movement (SL1 + SL4)
+Move
+Δ RoverState
+next : POS
+------------------------------------------------
+batteryLevel > 0
+next ∉ obstacles
+------------------------------------------------
+currentPosition' = next
+batteryLevel' = batteryLevel − 1
+
+
+//Recharge decision (HI1)
+SetRecharge
+Δ RoverState
+------------------------------------------------
+batteryLevel < MAX_BATTERY
+------------------------------------------------
+recharge' = TRUE
+
+
+//Charging step (HI2)
+Charge
+Δ RoverState
+------------------------------------------------
+recharge = TRUE
+currentPosition ∈ chargers
+batteryLevel < MAX_BATTERY
+------------------------------------------------
+batteryLevel' = batteryLevel + 1
+
+
+//Goal completion (G6)
+ReachGoal
+Δ RoverState
+data : DATACOLLECTED
+------------------------------------------------
+currentPosition = goal
+------------------------------------------------
+atGoal' = TRUE
+communicationData' =
+   ({completed}, data, systemState)
+
+
+//Failure detection (G7 / SL3)
+DetectFailure
+Δ RoverState
+msg : MESSAGE
+------------------------------------------------
+failure' = TRUE
+identifiedFailure' = msg
+
+
+//Reboot recovery
+Reboot
+Δ RoverState
+------------------------------------------------
+failure = TRUE
+------------------------------------------------
+failure' = FALSE
+return2NormalOperation' = TRUE
+
+
+//Helper authentication (CR3)
+AuthenticateHelper
+Δ RoverState
+id : ℕ
+------------------------------------------------
+failure = TRUE
+id = helperID
+helperID ∈ {2,3}
+------------------------------------------------
+failure' = FALSE
+return2NormalOperation' = TRUE
