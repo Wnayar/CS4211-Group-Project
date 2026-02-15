@@ -1,0 +1,20 @@
+Case Questions
+Do we model only the main rover? or do we also model the side rovers and maybe the environment?
+
+How to decide where to use reboot or call for help? Reboot then call for help?
+
+Need to model side rovers?
+
+Is it guaranteed that side robots will always fix main rover?
+
+Side rover can fail?
+
+Will rover only move in cardinal directions?
+
+How to verify goal reachiability and its modelling?
+
+Is 0 battery allowed for charging or is 1 the minimum?
+
+
+Modelling Questions
+How to model failure? (I.e. How to model transitions?)
