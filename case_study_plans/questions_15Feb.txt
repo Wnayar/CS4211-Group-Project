@@ -1,0 +1,29 @@
+The following are questions about the midterm presentation:
+
+1. What are the required deliverables for the midterm project?
+
+2. What are the rubrics for the midterm presentation?
+
+
+The following are questions about the case study:
+
+1. Do we model only the main rover? Or do we also model the side rovers and maybe the environment?
+
+2. How to decide where to use reboot or call for help? Reboot then call for help?
+
+3. Is it guaranteed that side robots will always fix main rover?
+
+4. Can side rover can fail?
+
+5. Will rover only move in cardinal directions? 
+
+6. Is 0 battery allowed to indicate charging or is 1 the minimum?
+
+7. Can we simplify the problem such that the rover charges whenever it reaches a battery life of 1? Otherwise, how do we specify the amount of battery needed between the current position and the goal? 
+
+
+The following are questions about z-modelling:
+
+1. How to model failure? (i.e. How to model transitions such as from ok state to failure state?)
+
+2. How to verify goal reachability and capture it in z-notation?
