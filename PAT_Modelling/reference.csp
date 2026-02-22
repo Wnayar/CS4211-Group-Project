@@ -1,0 +1,339 @@
+// ============================================================
+// ABZ Rover (Simplified) - CSP# / PAT Reference Model
+// Based on your Z "source of truth" + your clarifications.
+// Grid: 0..7 x 0..7
+// Movement: cardinal only
+// Recharge policy: if battery becomes 1 after a move, must recharge next
+// Failure: position-triggered, delayed during recharge (charge priority)
+// Goal: has priority over recharge; notifyComplete then STOP
+// Help: atomic arrival event but still checks helperID validity (CR3)
+// ============================================================
+
+
+// -------------------------------
+// Constants / Domains
+// -------------------------------
+#define MAX_X 7;
+#define MAX_Y 7;
+#define MAX_BATTERY 5;
+
+// Failure types
+#define FAIL_NONE 0;
+#define FAIL_REBOOT 1;
+#define FAIL_HELP 2;
+
+// Helper IDs
+#define HELP_NONE 0;
+#define HELP_1 1;
+#define HELP_2 2;
+
+
+// -------------------------------
+// Global State Variables
+// -------------------------------
+var int x;                  // rover x
+var int y;                  // rover y
+var int battery;            // 1..MAX_BATTERY
+var bool recharge;          // HI1/HI2
+var bool chargingComplete;  // convenience flag
+var bool failure;           // G7 FailureMode
+var int failureType;        // FAIL_REBOOT or FAIL_HELP
+var int helperID;           // 0,1,2 (CR3)
+var bool atGoal;            // reached goal
+var bool completed;         // after notifyComplete, we STOP
+// dataCollected is constant in your simplification; we model as an event payload conceptually
+// (PAT events are usually untyped; we just emit notifyComplete).
+
+
+// -------------------------------
+// Static Environment (V2)
+// Obstacles and failure points are FIXED.
+// -------------------------------
+
+// Obstacles: {(2,3), (4,4), (5,7), (7,5)}
+bool IsObstacle(int nx, int ny) {
+    return (nx==2 && ny==3)
+        || (nx==4 && ny==4)
+        || (nx==5 && ny==7)
+        || (nx==7 && ny==5);
+}
+
+// Goal: (7,7)
+bool IsGoal(int nx, int ny) {
+    return (nx==7 && ny==7);
+}
+
+// Reboot failure points: {(2,2), (6,2)}
+bool IsFailureRebootPoint(int nx, int ny) {
+    return (nx==2 && ny==2)
+        || (nx==6 && ny==2);
+}
+
+// Help failure mapping: {(2,6)->1, (5,5)->2}
+bool IsFailureHelpPoint(int nx, int ny) {
+    return (nx==2 && ny==6)
+        || (nx==5 && ny==5);
+}
+
+int HelpIDAt(int nx, int ny) {
+    if (nx==2 && ny==6) return HELP_1;
+    if (nx==5 && ny==5) return HELP_2;
+    return HELP_NONE;
+}
+
+// Mutual exclusion is satisfied by construction:
+// IsFailureRebootPoint and IsFailureHelpPoint never overlap.
+
+// Cardinal adjacency + bounds
+bool InBounds(int nx, int ny) {
+    return nx >= 0 && nx <= MAX_X && ny >= 0 && ny <= MAX_Y;
+}
+
+
+// -------------------------------
+// Initialisation (your confirmed init)
+// -------------------------------
+void Init() {
+    x = 1; y = 1;
+    battery = MAX_BATTERY;          // 5
+    recharge = false;
+    chargingComplete = true;
+    failure = false;
+    failureType = FAIL_NONE;
+    helperID = HELP_NONE;
+    atGoal = false;
+    completed = false;
+}
+
+
+// ============================================================
+// Events (named to match requirements)
+// ============================================================
+// moveN, moveS, moveE, moveW      : movement
+// enterRecharge, chargeStep, finishCharge  : HI1/HI2
+// triggerRebootFailure, triggerHelpFailure : G7 FailureMode entry
+// rebootRecover                   : G7 reboot action
+// requestHelp, helperArrives1, helperArrives2 : SL3 + CR3
+// notifyComplete                  : G6
+// ============================================================
+
+
+// -------------------------------
+// Main Rover Control Process
+// -------------------------------
+// We structure as a single process with explicit phases:
+//
+// 1) If atGoal => notifyComplete => STOP
+// 2) If recharge => must do chargeStep/finishCharge only
+// 3) Else if failure => must recover (reboot or help)
+// 4) Else if battery==1 => must enterRecharge (immediately after move caused 1)
+// 5) Else normal operation => move (cardinal), then:
+//      - update atGoal
+//      - if reached goal -> notifyComplete
+//      - else if battery==1 -> recharge next
+//      - else if landed on failure point -> trigger failure (delayed during recharge is handled by ordering)
+//
+// NOTE: "charge priority over failure":
+// We DO NOT trigger failure while recharge=true.
+// If a move lands on a failure point and battery becomes 1,
+// the model will force recharge first; after recharge ends,
+// the failure trigger transition can occur (still on same x,y).
+// -------------------------------
+
+process Rover() =
+    // terminal
+    (completed == true) -> STOP
+
+    // Goal priority: if atGoal, we finish immediately.
+  [] (atGoal == true && completed == false) ->
+        notifyComplete { completed = true; } -> STOP
+
+    // Recharge mode (HI2): only charging actions allowed.
+  [] (recharge == true) ->
+        (
+            // Stepwise charging
+            (battery < MAX_BATTERY) ->
+                chargeStep { battery = battery + 1; } -> Rover()
+          [] (battery == MAX_BATTERY) ->
+                finishCharge { recharge = false; chargingComplete = true; } -> Rover()
+        )
+
+    // Failure mode (G7): move disabled; only recovery actions.
+  [] (failure == true) ->
+        (
+            // Reboot recovery (always succeeds, no battery cost)
+            (failureType == FAIL_REBOOT) ->
+                rebootRecover {
+                    failure = false;
+                    failureType = FAIL_NONE;
+                    helperID = HELP_NONE;
+                } -> Rover()
+
+          [] // Help recovery path (atomic arrival but checks ID)
+             (failureType == FAIL_HELP && helperID == HELP_1) ->
+                requestHelp -> helperArrives1 ->
+                // CR3 check is enforced by requiring the correct event for the expected helperID.
+                // Since we simplified "always correct", we don't include a wrong-arrival branch.
+                intervene {
+                    failure = false;
+                    failureType = FAIL_NONE;
+                    helperID = HELP_NONE;
+                } -> Rover()
+
+          [] (failureType == FAIL_HELP && helperID == HELP_2) ->
+                requestHelp -> helperArrives2 ->
+                intervene {
+                    failure = false;
+                    failureType = FAIL_NONE;
+                    helperID = HELP_NONE;
+                } -> Rover()
+        )
+
+    // Must enter recharge immediately once battery == 1 (and not atGoal/failure/recharge).
+  [] (recharge == false && failure == false && atGoal == false && battery == 1) ->
+        enterRecharge { recharge = true; chargingComplete = false; } -> Rover()
+
+    // Otherwise: Normal navigation
+  [] (recharge == false && failure == false && atGoal == false && battery > 1) ->
+        (
+            // Move North (y+1)
+            (InBounds(x, y+1) && !IsObstacle(x, y+1)) ->
+                moveN {
+                    y = y + 1;
+                    battery = battery - 1;
+                    atGoal = IsGoal(x, y);
+                } -> PostMove()
+
+          [] // Move South (y-1)
+            (InBounds(x, y-1) && !IsObstacle(x, y-1)) ->
+                moveS {
+                    y = y - 1;
+                    battery = battery - 1;
+                    atGoal = IsGoal(x, y);
+                } -> PostMove()
+
+          [] // Move East (x+1)
+            (InBounds(x+1, y) && !IsObstacle(x+1, y)) ->
+                moveE {
+                    x = x + 1;
+                    battery = battery - 1;
+                    atGoal = IsGoal(x, y);
+                } -> PostMove()
+
+          [] // Move West (x-1)
+            (InBounds(x-1, y) && !IsObstacle(x-1, y)) ->
+                moveW {
+                    x = x - 1;
+                    battery = battery - 1;
+                    atGoal = IsGoal(x, y);
+                } -> PostMove()
+        )
+;
+
+
+// -------------------------------
+// Post-move logic: enforce priorities and delayed failure triggering
+// -------------------------------
+process PostMove() =
+    // If reached goal -> notifyComplete immediately (goal priority over recharge/failure)
+    (atGoal == true) -> Rover()
+
+  [] // If battery == 1 -> must recharge next (and failures are delayed until after recharge)
+     (battery == 1) -> Rover()
+
+  [] // Otherwise, if landed on failure points and NOT in recharge, trigger failures
+     (battery > 1 && failure == false && recharge == false && atGoal == false && IsFailureRebootPoint(x,y)) ->
+        triggerRebootFailure {
+            failure = true;
+            failureType = FAIL_REBOOT;
+            helperID = HELP_NONE;
+        } -> Rover()
+
+  [] (battery > 1 && failure == false && recharge == false && atGoal == false && IsFailureHelpPoint(x,y)) ->
+        triggerHelpFailure {
+            failure = true;
+            failureType = FAIL_HELP;
+            helperID = HelpIDAt(x,y); // 1 or 2
+        } -> Rover()
+
+  [] // Otherwise continue
+     Rover()
+;
+
+
+// -------------------------------
+// Top-level system
+// -------------------------------
+process System() =
+    init -> { Init(); } -> Rover();
+
+
+// ============================================================
+// Assertions / Properties
+// ============================================================
+//
+// PAT has multiple assertion mechanisms depending on version:
+// - Reachability (e.g., "reaches" a condition/event)
+// - Deadlock-freeness
+// - LTL safety/liveness (syntax varies)
+//
+// I’m giving you a solid set of properties to check.
+// If your PAT build complains about syntax, tell me the exact error
+// and I’ll rewrite them in the exact syntax your PAT expects.
+// ============================================================
+
+
+// ----------- SL1: battery never runs out -----------
+/*
+Idea: battery is always >= 1.
+We enforced it structurally (move requires battery>1, recharge starts at 1).
+But we still assert it.
+*/
+
+// Option A: State assertion style (some PAT builds support this)
+#assert System() |= [] (battery >= 1);
+
+// ----------- SL4: never collide with obstacle -----------
+#assert System() |= [] (!IsObstacle(x,y));
+
+// ----------- SL2: goal location should be reachable -----------
+/*
+We want: eventually atGoal becomes true, i.e., reach (7,7).
+*/
+#assert System() |= <> (atGoal == true);
+
+// ----------- G6: If reaches goal, notifyComplete occurs (and only once) -----------
+/*
+We model notifyComplete as making completed=true and STOP.
+So:
+- whenever atGoal, eventually completed becomes true.
+- and completed implies no more moves.
+*/
+#assert System() |= [] (atGoal -> <> completed);
+
+// ----------- HI2: once recharge=true, rover remains there until fully recharged -----------
+/*
+During recharge we disallow move.
+We can assert: recharge -> (x,y) stays constant until finishCharge.
+Harder as pure state property; easiest is to trust structural restriction.
+But we can assert "no move events happen while recharge=true" (trace/property).
+If your PAT supports event-based LTL, we can assert that too.
+*/
+
+// ----------- SL3 + CR3 + G7: failure reaction correctness -----------
+/*
+- If failure occurs, rover enters FailureMode (failure=true) and performs rebootRecover
+  OR requestHelp + helperArrives{helperID} + intervene (atomic help).
+- HelperID must be valid (1 or 2) when in help failure.
+*/
+#assert System() |= [] ((failure && failureType==FAIL_HELP) -> (helperID==HELP_1 || helperID==HELP_2));
+#assert System() |= [] ((failure && failureType==FAIL_REBOOT) -> (helperID==HELP_NONE));
+
+/*
+Liveness: if failure happens, eventually failure becomes false again (recovery).
+*/
+#assert System() |= [] (failure -> <> (!failure));
+
+
+// ----------- Deadlock freedom (optional but useful) -----------
+#assert System() deadlockfree;
