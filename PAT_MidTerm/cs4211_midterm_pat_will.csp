@@ -1,0 +1,192 @@
+﻿// @@ABZ Rover - Midterm Scenatio 1@@
+// Requirements covered: SL1, SL2, SL4, V2, G6, HI1, HI2
+
+// -------------------------------
+// Grid layout (visual map)
+// -------------------------------
+// Coordinates: (x,y) with x = 0..7, y = 0..7.
+// Start: R at (0,0)
+// Goal:  G at (7,7)
+// Obstacles (#): (2,3), (4,4), (5,7), (7,5)
+//
+// Legend: R = rover start, G = goal, # = obstacle, . = empty
+//
+// y=7 | . . . . . # . G
+// y=6 | . . . . . . . .
+// y=5 | . . . . . . . #
+// y=4 | . . . . # . . .
+// y=3 | . . # . . . . .
+// y=2 | . . . . . . . .
+// y=1 | . . . . . . . .
+// y=0 | R . . . . . . .
+//       0 1 2 3 4 5 6 7   (x)
+//
+// No 2D matrix is used (no grid[8][8]).
+//
+// The grid is simulated using:
+//   - currentX, currentY
+//   - InBounds(...)
+//   - IsObstacle(...)
+//   - IsGoal(...)
+//
+// The map is logical, not stored explicitly,
+// Which keeps the model smaller and simpler, reducing state space.
+
+
+// macros 
+#define MAX_X 7;
+#define MAX_Y 7;
+#define MAX_BATTERY 5;
+
+#define InBounds(x, y) ((x >= 0) && (x <= MAX_X) && (y >= 0) && (y <= MAX_Y));
+#define IsObstacle(x, y) (
+	((x == 2) && (y == 3)) ||
+	((x == 4) && (y == 4)) ||
+	((x == 5) && (y == 7)) ||
+	((x == 7) && (y == 5))
+);
+#define IsGoal(x, y) ((x == 7) && (y == 7));
+
+
+// global variables 
+var currentX : {0..MAX_X} = 0;
+var currentY : {0..MAX_Y} = 0;
+var prevX : {0..MAX_X} = 0;
+var prevY : {0..MAX_Y} = 0;
+
+var batteryLevel : {1..MAX_BATTERY} = MAX_BATTERY;
+var prevBattery : {1..MAX_BATTERY} = MAX_BATTERY;
+var recharge = false;
+var chargingComplete = true;
+
+var atGoal = false;
+var completed = false;
+var dataCollected = 0;
+
+// Rover Process (Scenario 1 only)
+Rover = 
+	if (completed) {
+		Skip
+	}
+	else if (atGoal) {
+		notifyComplete { completed = true; } -> Rover()
+	}
+	else if (recharge) {
+		if (batteryLevel < MAX_BATTERY) {
+			chargeStep {
+				prevX = currentX;
+				prevY = currentY;
+				prevBattery = batteryLevel;
+				batteryLevel = batteryLevel + 1;
+				chargingComplete = false;
+			} -> Rover()
+		}
+		else {
+			finishCharge {
+				prevX = currentX;
+				prevY = currentY;
+				prevBattery = batteryLevel;
+				recharge= false;
+				chargingComplete = true;
+			} -> Rover()
+		}
+	}
+	else if (batteryLevel == 1) {
+		// HI1 simplified threshold policy: enter recharge at low power
+		enterRecharge {
+			prevX = currentX;
+			prevY = currentY;
+			prevBattery = batteryLevel;
+			recharge = true;
+			chargingComplete = false;
+		} -> Rover()
+	} else {
+		// normal navigation with nondeterminstic moves avoiding obstacles 
+		(
+			// North
+			[call(InBounds, currentX, currentY + 1) && !call(IsObstacle, currentX, currentY + 1)]
+			moveNorth {
+				prevX = currentX; 
+				prevY = currentY;
+				prevBattery = batteryLevel;
+				currentY = currentY + 1;
+				batteryLevel = batteryLevel - 1;
+				atGoal = call(IsGoal, currentX, currentY);			
+			} -> Rover()
+			[]
+			// South
+			[call(InBounds, currentX, currentY - 1) && !call(IsObstacle, currentX, currentY - 1)]
+			moveSouth {
+				prevX = currentX; 
+				prevY = currentY;
+				prevBattery = batteryLevel;
+				currentY = currentY - 1;
+				batteryLevel = batteryLevel - 1;
+				atGoal = call(IsGoal, currentX, currentY);			
+			} -> Rover()			
+	        // East
+	        []
+			[call(InBounds, currentX + 1, currentY) && !call(IsObstacle, currentX + 1, currentY)]
+			moveEast {
+				prevX = currentX; 
+				prevY = currentY;
+				prevBattery = batteryLevel;
+				currentX = currentX + 1;
+				batteryLevel = batteryLevel - 1;
+				atGoal = call(IsGoal, currentX, currentY);			
+			} -> Rover()	
+			[]
+	        // West
+			[call(InBounds, currentX - 1, currentY) && !call(IsObstacle, currentX - 1, currentY)]
+			moveWest {
+				prevX = currentX; 
+				prevY = currentY;
+				prevBattery = batteryLevel;
+				currentX = currentX - 1;
+				batteryLevel = batteryLevel - 1;
+				atGoal = call(IsGoal, currentX, currentY);			
+			} -> Rover()
+        )
+	}
+;
+
+#define batteryOkay (batteryLevel >= 1);
+#define goalReached (atGoal == true);
+#define noObstacle (!call(IsObstacle, currentX, currentY));
+#define doneNotified (completed == true);
+#define needRecharge ((batteryLevel == 1) && (goalReached == false) && (doneNotified == false));
+#define isRecharging (recharge == true);
+#define movedOneStep   ((currentX != prevX) || (currentY != prevY));
+#define battDecOne     (batteryLevel == prevBattery - 1);
+#define posSameWhenCharge (recharge == false || ((currentX == prevX) && (currentY == prevY)));
+#define goalNotObstacle (!call(IsObstacle, 7, 7));
+
+// assertions
+// SL1: never run out of battery
+#assert Rover() |= [] batteryOkay;
+
+// SL2: goal reachable (existential reachability)
+#assert Rover() reaches goalReached;
+
+// SL4: never collide with obstacle 
+#assert Rover() |= [] noObstacle; 
+
+// G6: if rover atGoal, then evenetually completed 
+#assert Rover() |= [] (goalReached -> <> doneNotified); 
+
+// HI1 simplified, 
+//a) recharge set to true when battery is 1 (as we charge to full when battery is 1) 
+//N.b if at goal dont need to recharge when bat is 1, goal higher priority
+#assert Rover() |= [] ((!needRecharge) || (<> isRecharging));
+
+//b) if move then battery decrement by one 
+#assert Rover() |= [] (movedOneStep -> battDecOne);
+
+// HI2: while reacharge == true, position does not move 
+#assert Rover() |= [] posSameWhenCharge;
+
+// V2: goal does not have an obstacle 
+#assert Rover() |= [] goalNotObstacle;
+
+// deadlock free 
+#assert Rover() deadlockfree;
