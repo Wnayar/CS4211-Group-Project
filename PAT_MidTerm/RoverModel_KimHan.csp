@@ -1,0 +1,115 @@
+﻿// @@ Planetary Rover Midterm Model @@
+
+//Planetary environment set-up
+//
+//S = Start (0,0)
+//G = Goal (7,7)
+//X = Obstacles = (1,5), (3,4), (4,6), (5,3)
+//. = Free cell
+//
+//      x →   0   1   2   3   4   5   6   7
+//y=7        .   .   .   .   .   .   .   G
+//y=6        .   .   .   .   X   .   .   .
+//y=5        .   X   .   .   .   .   .   .
+//y=4        .   .   .   X   .   .   .   .
+//y=3        .   .   .   .   .   X   .   .
+//y=2        .   .   .   .   .   .   .   .
+//y=1        .   .   .   .   .   .   .   .
+//y=0        S   .   .   .   .   .   .   .
+
+#define MAX_BATT 5;
+#define MAX_X 7;
+#define MAX_Y 7;
+
+#define isGoal(x,y) ((x==7) && (y==7));
+#define isObstacle(x,y) ((x==1 && y==5) || (x==3 && y==4) || (x==4 && y==6) || (x==5 && y==3));
+#define isInBounds(x, y) ((x >= 0) && (x <= MAX_X) && (y >= 0) && (y <= MAX_Y));
+
+var batt = MAX_BATT;
+var curr_x = 0;
+var curr_y = 0;
+var recharging = false;
+var notifyComplete = false;
+var moving = false;
+
+Rover() = 
+	if (call(isGoal, curr_x, curr_y)) {
+		notifyGround{notifyComplete = true;} -> Stop()
+	} else if (batt == 1) {
+		stopMoving{moving=false;} -> StartRecharge()
+	} else {
+		startMoving{moving=true;} -> Move()
+	};
+	
+StartRecharge() =
+    rechargeStart {
+        recharging = true;
+    } -> Charging();
+
+Charging() =
+    [batt < MAX_BATT]
+    solarCharge {
+        batt++;
+    } -> Charging()
+    []
+    [batt == MAX_BATT]
+    rechargeDone {
+        recharging = false;
+    } -> Rover();
+ 
+Move() =
+	[!call(isObstacle, curr_x, curr_y+1) && call(isInBounds, curr_x, curr_y+1) && moving] 
+	moveUp{curr_y++; batt--;} -> Rover()
+	[]
+	[!call(isObstacle, curr_x, curr_y-1) && call(isInBounds, curr_x, curr_y-1) && moving] 
+	moveDown{curr_y--; batt--;} -> Rover()
+	[]
+	[!call(isObstacle, curr_x-1, curr_y) && call(isInBounds, curr_x-1, curr_y) && moving] 
+	moveLeft{curr_x--; batt--;} -> Rover()
+	[]
+	[!call(isObstacle, curr_x+1, curr_y) && call(isInBounds, curr_x+1, curr_y) && moving] 
+	moveRight{curr_x++; batt--;} -> Rover();
+
+// Assertions
+
+// SL1: battery never 0
+#define batteryPositive (batt > 0);
+#assert Rover() |= [] batteryPositive;
+
+// SL2: Goal is reachable
+#define goalReached (call(isGoal, curr_x, curr_y));
+#assert Rover() reaches goalReached; 
+
+// SL4: Rover position never on obstacle
+#define neverOnObstacle (!call(isObstacle, curr_x, curr_y));
+#assert Rover() |= [] neverOnObstacle; 
+
+// Slightly modified V2: Never out of bounds and no obstacle at goal
+#define V2 ((call(isInBounds, curr_x, curr_y) && !call(isObstacle, 7, 7)));
+#assert Rover() |= [] V2; 
+
+// G6: notify ground station when goal is reached
+#define notificationMade (notifyComplete == true);
+#assert Rover() |= [] (goalReached -> <> notificationMade);
+
+// Modified HI1a: Should recharge when batt == 1 and not at goal pos
+#define needsRecharge (batt == 1 && !goalReached);
+#define isRecharging (recharging == true);
+#assert Rover() |= [] (needsRecharge -> <> isRecharging);
+
+// HI1b: Each move reduces battery by 1
+#define batt5 (batt == 5);
+#define batt4 (batt == 4);
+#define batt3 (batt == 3);
+#define batt2 (batt == 2);
+#define batt1 (batt == 1);
+#assert Rover() |= [] (
+    ((batt5 && X(moveUp || moveDown || moveLeft || moveRight)) -> X(batt4)) &&
+    ((batt4 && X(moveUp || moveDown || moveLeft || moveRight)) -> X(batt3)) &&
+    ((batt3 && X(moveUp || moveDown || moveLeft || moveRight)) -> X(batt2)) &&
+    ((batt2 && X(moveUp || moveDown || moveLeft || moveRight)) -> X(batt1))
+);
+
+// HI2: Rover don't move while recharging and vice versa
+#define mutuallyExclusive (!(moving == true && recharging == true));
+#assert Rover() |= [] mutuallyExclusive;
