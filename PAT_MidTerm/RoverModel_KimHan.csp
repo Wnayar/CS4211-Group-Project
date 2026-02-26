@@ -34,7 +34,7 @@ var moving = false;
 
 Rover() = 
 	if (call(isGoal, curr_x, curr_y)) {
-		notifyGround{notifyComplete = true;} -> Stop()
+		notifyGround{notifyComplete = true;} -> Skip()
 	} else if (batt == 1) {
 		stopMoving{moving=false;} -> StartRecharge()
 	} else {
@@ -112,4 +112,7 @@ Move() =
 
 // HI2: Rover don't move while recharging and vice versa
 #define mutuallyExclusive (!(moving == true && recharging == true));
+
 #assert Rover() |= [] mutuallyExclusive;
+
+#assert Rover() deadlockfree;
