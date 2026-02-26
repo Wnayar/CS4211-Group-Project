@@ -1,4 +1,4 @@
-﻿// @@ Planetary Rover Midterm Model @@
+// @@ Planetary Rover Midterm Model @@
 
 //Planetary environment set-up
 //
@@ -29,12 +29,15 @@ var batt = MAX_BATT;
 var curr_x = 0;
 var curr_y = 0;
 var recharging = false;
+var goalReached = false;
 var notifyComplete = false;
 var moving = false;
 
 Rover() = 
-	if (call(isGoal, curr_x, curr_y)) {
-		notifyGround{notifyComplete = true;} -> Skip()
+	if (goalReached) {
+		notifyGround{notifyComplete=true;} -> Skip()
+	} else if (call(isGoal, curr_x, curr_y)) {
+		setGoalReached{goalReached=true;} -> Rover()
 	} else if (batt == 1) {
 		stopMoving{moving=false;} -> StartRecharge()
 	} else {
@@ -77,23 +80,23 @@ Move() =
 #assert Rover() |= [] batteryPositive;
 
 // SL2: Goal is reachable
-#define goalReached (call(isGoal, curr_x, curr_y));
-#assert Rover() reaches goalReached; 
+#define isGoalReached (goalReached == true);
+#assert Rover() reaches isGoalReached;
 
 // SL4: Rover position never on obstacle
 #define neverOnObstacle (!call(isObstacle, curr_x, curr_y));
-#assert Rover() |= [] neverOnObstacle; 
+#assert Rover() |= [] neverOnObstacle;
 
 // Slightly modified V2: Never out of bounds and no obstacle at goal
 #define V2 ((call(isInBounds, curr_x, curr_y) && !call(isObstacle, 7, 7)));
-#assert Rover() |= [] V2; 
+#assert Rover() |= [] V2;
 
 // G6: notify ground station when goal is reached
 #define notificationMade (notifyComplete == true);
-#assert Rover() |= [] (goalReached -> <> notificationMade);
+#assert Rover() |= [] (isGoalReached -> <> notificationMade);
 
 // Modified HI1a: Should recharge when batt == 1 and not at goal pos
-#define needsRecharge (batt == 1 && !goalReached);
+#define needsRecharge (batt == 1 && !call(isGoal, curr_x, curr_y));
 #define isRecharging (recharging == true);
 #assert Rover() |= [] (needsRecharge -> <> isRecharging);
 
@@ -112,7 +115,6 @@ Move() =
 
 // HI2: Rover don't move while recharging and vice versa
 #define mutuallyExclusive (!(moving == true && recharging == true));
-
 #assert Rover() |= [] mutuallyExclusive;
 
 #assert Rover() deadlockfree;
