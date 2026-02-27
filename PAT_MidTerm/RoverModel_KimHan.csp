@@ -34,30 +34,18 @@ var notifyComplete = false;
 var moving = false;
 
 Rover() = 
-	if (goalReached) {
-		notifyGround{notifyComplete=true;} -> Skip()
-	} else if (call(isGoal, curr_x, curr_y)) {
-		setGoalReached{goalReached=true;} -> Rover()
+	if (call(isGoal, curr_x, curr_y)) {
+		goalReachedAndNotify{goalReached=true; notifyComplete=true;} -> Skip()
 	} else if (batt == 1) {
-		stopMoving{moving=false;} -> StartRecharge()
+		stopMoving{moving=false; recharging=true;} -> Charging()
 	} else {
-		startMoving{moving=true;} -> Move()
+		startMoving{moving=true; recharging=false;} -> Move()
 	};
-	
-StartRecharge() =
-    rechargeStart {
-        recharging = true;
-    } -> Charging();
 
 Charging() =
     [batt < MAX_BATT]
     solarCharge {
         batt++;
-    } -> Charging()
-    []
-    [batt == MAX_BATT]
-    rechargeDone {
-        recharging = false;
     } -> Rover();
  
 Move() =
@@ -93,19 +81,19 @@ Move() =
 
 // G6: notify ground station when goal is reached
 #define notificationMade (notifyComplete == true);
-#assert Rover() |= [] (isGoalReached -> <> notificationMade);
+#assert Rover() |= [] (isGoalReached -> notificationMade);
 
 // Modified HI1a: Should recharge when batt == 1 and not at goal pos
-#define needsRecharge (batt == 1 && !call(isGoal, curr_x, curr_y));
 #define isRecharging (recharging == true);
-#assert Rover() |= [] (needsRecharge -> <> isRecharging);
+#define isNotAtGoal (!call(isGoal, curr_x, curr_y));
+#define batt1 (batt == 1);
+#assert Rover() |= [] (batt1 && isNotAtGoal && X(stopMoving) -> X(isRecharging));
 
 // HI1b: Each move reduces battery by 1
 #define batt5 (batt == 5);
 #define batt4 (batt == 4);
 #define batt3 (batt == 3);
 #define batt2 (batt == 2);
-#define batt1 (batt == 1);
 #assert Rover() |= [] (
     ((batt5 && X(moveUp || moveDown || moveLeft || moveRight)) -> X(batt4)) &&
     ((batt4 && X(moveUp || moveDown || moveLeft || moveRight)) -> X(batt3)) &&
