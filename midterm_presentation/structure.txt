@@ -1,0 +1,10 @@
+Introduction
+ - Explain the question (Will)
+
+Explain the PAT Model
+ - Explain the State && Explain the actions (Raj)
+ - Explain the assertions and why they are as such (Kim + Will)
+
+Show verification
+
+Show trace
