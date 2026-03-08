@@ -39,14 +39,15 @@ Rover() =
 	} else if (batt == 1) {
 		stopMoving{moving=false; recharging=true;} -> Charging()
 	} else {
-		startMoving{moving=true; recharging=false;} -> Move()
+		startMoving{moving=true;} -> Move()
 	};
 
 Charging() =
-    [batt < MAX_BATT]
-    solarCharge {
-        batt++;
-    } -> Rover();
+	[batt < MAX_BATT]
+	solarCharge {batt++;} -> Charging()
+	[]
+	[batt == MAX_BATT]
+	chargeComplete {recharging=false;} -> Rover();
  
 Move() =
 	[!call(isObstacle, curr_x, curr_y+1) && call(isInBounds, curr_x, curr_y+1) && moving] 
