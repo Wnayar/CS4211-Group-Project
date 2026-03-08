@@ -102,8 +102,16 @@ Move() =
     ((batt2 && X(moveUp || moveDown || moveLeft || moveRight)) -> X(batt1))
 );
 
-// HI2: Rover don't move while recharging and vice versa
+// HI2a: Rover don't move while recharging and vice versa
 #define mutuallyExclusive (!(moving == true && recharging == true));
 #assert Rover() |= [] mutuallyExclusive;
+
+// HI2b: Rover charges until battery is 5
+#assert Rover() |= [] (
+    (isRecharging && batt1 -> X(batt2)) &&
+    (isRecharging && batt2 -> X(batt3)) &&
+    (isRecharging && batt3 -> X(batt4)) &&
+    (isRecharging && batt4 -> X(batt5))
+);
 
 #assert Rover() deadlockfree;
