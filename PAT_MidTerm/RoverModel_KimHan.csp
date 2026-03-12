@@ -82,7 +82,8 @@ Move() =
 
 // G6: notify ground station when goal is reached
 #define notificationMade (notifyComplete == true);
-#assert Rover() |= [] (isGoalReached -> notificationMade);
+#define G6 (isGoalReached && notificationMade);
+#assert Rover() reaches G6;
 
 // Modified HI1a: Should recharge when batt == 1 and not at goal pos
 #define isNotAtGoal (!call(isGoal, curr_x, curr_y));
