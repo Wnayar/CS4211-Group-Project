@@ -82,13 +82,13 @@ Move() =
 
 // G6: notify ground station when goal is reached
 #define notificationMade (notifyComplete == true);
-#assert Rover() |= [] (isGoalReached -> notificationMade);
+#define G6 (isGoalReached && notificationMade);
+#assert Rover() reaches G6;
 
 // Modified HI1a: Should recharge when batt == 1 and not at goal pos
-#define isRecharging (recharging == true);
 #define isNotAtGoal (!call(isGoal, curr_x, curr_y));
 #define batt1 (batt == 1);
-#assert Rover() |= [] (batt1 && isNotAtGoal && X(stopMoving) -> X(isRecharging));
+#assert Rover() |= [] (batt1 && isNotAtGoal && stopMoving -> X(solarCharge));
 
 // HI1b: Each move reduces battery by 1
 #define batt5 (batt == 5);
@@ -107,6 +107,7 @@ Move() =
 #assert Rover() |= [] mutuallyExclusive;
 
 // HI2b: Rover charges until battery is 5
+#define isRecharging (recharging == true);
 #assert Rover() |= [] (
     (isRecharging && batt1 -> X(batt2)) &&
     (isRecharging && batt2 -> X(batt3)) &&
