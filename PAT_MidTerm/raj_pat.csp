@@ -1,68 +1,282 @@
-﻿# define MAX_X 5;
-# define MAX_Y 5;
-# define MAX_BATTERY 5;
+﻿// @@ Planetary Rover Midterm Model @@
 
-var currentPosition[2];
-var goal[2];
-var obstacle[MAX_X][MAX_Y];
-var battery = MAX_BATTERY;
+//Planetary environment set-up
+//
+//S = Start (0,0)
+//G = Goal (7,7)
+//X = Obstacles = (1,5), (3,4), (4,6), (5,3)
+//. = Free cell
+//
+//      x →   0   1   2   3   4   5   6   7
+//y=7        .   .   .   .   .   .   .   G
+//y=6        .   .   .   .   X   .   .   .
+//y=5        .   X   .   .   .   .   .   .
+//y=4        .   .   .   X   .   .   .   .
+//y=3        .   .   .   .   .   X   .   .
+//y=2        .   .   .   .   .   .   .   .
+//y=1        .   .   .   .   .   .   .   .
+//y=0        S   .   .   .   .   .   .   .
 
-Init = initilaise {
-	currentPosition[0] = 0;
-	currentPosition[1] = 0;
-	goal[0] = 4;
-	goal[1] = 4;
+#define MAX_BATT 5;
+#define MAX_X 7;
+#define MAX_Y 7;
+#define HELPER1_ID 2;
+#define HELPER2_ID 3;
+
+#define isGoal(x,y) ((x==7) && (y==7));
+#define isObstacle(x,y) ((x==1 && y==5) || (x==3 && y==4) || (x==4 && y==6) || (x==5 && y==3));
+#define isInBounds(x, y) ((x >= 0) && (x <= MAX_X) && (y >= 0) && (y <= MAX_Y));
+
+#define isValidHelper(id) ((id==2) || (id==3));
+
+var batt = MAX_BATT;
+var curr_x = 0;
+var curr_y = 0;
+var recharging = false;
+var goalReached = false;
+var notifyComplete = false;
+var moving = false;
+
+//////////////////////
+// Variables for SS2//
+//////////////////////
+
+// "During navigation, the rover encounters a failure. The rover must then enter failure mode"
+// Suggests a distinction in the event of failure and the ability for rover to enter fail mode.
+// Modelled by two different flags
+var is_rover_damaged = false;
+var failureMode = false;
+
+// From email, "abstract internal descion" and "make sure to keep both choices open".
+// This suggests that the flag that we do here is modelled as an 'internal choice' of reboot or notify
+var reboot_tried = false;
+var failure_notified = false;
+
+var reboot_success = false; // If fails here, then go back to reboot_tried [] failure_notified ELSE not rover damaged
+
+var is_helper_sent = false;
+var helper_id_being_sent = 0; // Modelled as an internal choice by ground statetion
+var helper_arrived = false;
+var helper_id_authenticating = 0;
+var helper_id_authentication_complete = false;
+var is_helper_id_authentic = false; // If fails here, then go back to reboot_tried [] failure_notified
+var is_help_accepted = false; // MUST accept help // From email, help will always work, so, not rover damaged
+
+Rover() = 
+	if (is_rover_damaged) {
+		stopMovingToReason{moving=false; failureMode = true} -> Reason()
+	} else if (call(isGoal, curr_x, curr_y)) {
+		goalReachedAndNotify{goalReached=true; notifyComplete=true;} -> Skip()
+	} else if (batt == 1) {
+		stopMovingToCharge{moving=false; recharging=true;} -> Charging()
+	} else {
+		startMoving{moving=true;} -> Move()
+	};
+
+Charging() =
+	[batt < MAX_BATT]
+	solarCharge {batt++;} -> Charging()
+	[]
+	[batt == MAX_BATT]
+	chargeComplete {recharging=false;} -> Rover();
+ 
+Move() =
+	[!call(isObstacle, curr_x, curr_y+1) && call(isInBounds, curr_x, curr_y+1) && moving] 
+	moveUp{curr_y++; batt--;} -> Damageable()
+	[]
+	[!call(isObstacle, curr_x, curr_y-1) && call(isInBounds, curr_x, curr_y-1) && moving] 
+	moveDown{curr_y--; batt--;} -> Damageable()
+	[]
+	[!call(isObstacle, curr_x-1, curr_y) && call(isInBounds, curr_x-1, curr_y) && moving] 
+	moveLeft{curr_x--; batt--;} -> Damageable()
+	[]
+	[!call(isObstacle, curr_x+1, curr_y) && call(isInBounds, curr_x+1, curr_y) && moving] 
+	moveRight{curr_x++; batt--;} -> Damageable();
+
+//////////////////////
+// Implement for SS2//
+//////////////////////
+Damageable() =
+	noDamage -> Rover()
+	[]
+	damageRover{is_rover_damaged = true;} -> Rover();
+
+
+Reason() = 
+	tryReboot{reboot_tried = true;} -> RebootResult()
+	[]
+	notifyGroundStation{failure_notified = true;} -> WaitForHelp();
+
+//AttemptReboot() = tryReboot{reboot_tried = true;} -> RebootResult();
+
+RebootResult() =
+	rebootPass{
+		reboot_success = true;
+	} -> Heal()
+	[]
+	Reason();
+
+
+//RequestHelp() =
+//	notifyGroundStation{
+//		failure_notified = true;
+//	} -> WaitForHelp();
 	
-	var i = 0;
-    while (i < MAX_X) {
-      var j = 0;
-      while (j < MAX_Y) {
-        obstacle[i][j] = 0;
-        j = j + 1;
-      }
-      i = i + 1;
-    }
-    obstacle[2][2] = 1;
-} -> Skip;
+WaitForHelp() =
+	sendHelper1{
+		is_helper_sent = true;
+		helper_id_being_sent = HELPER1_ID;
+	} -> HelperArrives()
+	[]
+	sendHelper2{
+		is_helper_sent = true;
+		helper_id_being_sent = HELPER2_ID;
+	} -> HelperArrives();
 
-# define PosX(p) p[0];
-# define PosY(p) p[1];
-# define InBounds(x, y) ((x >= 0) && (x < MAX_X) && (y >= 0) && (y < MAX_Y));
-# define IsObstacle(x, y) (call(InBounds, x, y) && obstacle[x][y] == 1);
-# define IsGoal(pos) (pos[0] == goal[0] && pos[1] == goal[1]);
-
+HelperArrives() =
+	arriveHelper2{
+		helper_arrived = true;
+		helper_id_authenticating = HELPER1_ID;
+	} -> AuthenticateHelper()
+	[]
+	arriveHelper3{
+		helper_arrived = true;
+		helper_id_authenticating = HELPER2_ID;
+	} -> AuthenticateHelper();
 	
-Rover() =
-	[!call(IsGoal,currentPosition) && battery > 1 
-		&& call(InBounds, currentPosition[0], currentPosition[1] + 1) 
-		&& !call(IsObstacle, currentPosition[0], currentPosition[1] + 1)]
-	moveNorth{battery = battery - 1; currentPosition[1] = currentPosition[1] + 1;} -> Rover()
+AuthenticateHelper() =
+	checkHelperId{
+		helper_id_authentication_complete = true;
+		is_helper_id_authentic =
+			(helper_id_being_sent == helper_id_authenticating) &&
+			call(isValidHelper, helper_id_authenticating);
+	} -> AuthenticationDecision();
+
+AuthenticationDecision() =
+	[is_helper_id_authentic]
+	acceptHelp{
+		is_help_accepted = true;
+	} -> Heal()
 	[]
-	[!call(IsGoal,currentPosition) && battery > 1 
-		&& call(InBounds, currentPosition[0], currentPosition[1] - 1) 
-		&& !call(IsObstacle, currentPosition[0], currentPosition[1] - 1)]
-	moveSouth{battery = battery - 1; currentPosition[1] = currentPosition[1] - 1;} -> Rover()
-	[]
-	[!call(IsGoal,currentPosition) && battery > 1 
-		&& call(InBounds, currentPosition[0] + 1, currentPosition[1]) 
-		&& !call(IsObstacle, currentPosition[0] + 1, currentPosition[1])]
-	moveEast{battery = battery - 1; currentPosition[0] = currentPosition[0] + 1;}->Rover()
-	[]
-	[!call(IsGoal,currentPosition) && battery > 1
-		&& call(InBounds, currentPosition[0] - 1, currentPosition[1]) 
-		&& !call(IsObstacle, currentPosition[0] - 1, currentPosition[1])]
-	moveWest{battery = battery - 1; currentPosition[0] = currentPosition[0] - 1;}->Rover()
-	[]
-	[call(IsGoal, currentPosition)]goalReached -> Skip
-	[]
-	[battery <= 1 && !call(IsGoal, currentPosition)]recharge{battery = MAX_BATTERY} -> Rover();
+	[!is_helper_id_authentic]
+	rejectHelp{
+		is_help_accepted = false;
+	} -> Reason();
+	
+Heal() = 
+	resetRoverSystem{
+		is_rover_damaged = false;
+		failureMode = false;
+		reboot_tried = false;
+		failure_notified = false;
+		reboot_success = false;
+		is_helper_sent = false;
+		helper_id_being_sent = 0;
+		helper_arrived = false;
+		helper_id_authenticating = 0;
+		helper_id_authentication_complete = false;
+		is_helper_id_authentic = false;
+		is_help_accepted = false;
+	} -> Rover();
+
+// Assertions
+
+// SL1: battery never 0
+#define batteryPositive (batt > 0);
+#assert Rover() |= [] batteryPositive;
+
+// SL2: Goal is reachable
+#define isGoalReached (goalReached == true);
+#assert Rover() reaches isGoalReached;
+
+// SL4: Rover position never on obstacle
+#define neverOnObstacle (!call(isObstacle, curr_x, curr_y));
+#assert Rover() |= [] neverOnObstacle;
+
+// Slightly modified V2: Never out of bounds and no obstacle at goal
+#define V2 ((call(isInBounds, curr_x, curr_y) && !call(isObstacle, 7, 7)));
+#assert Rover() |= [] V2;
+
+// G6: notify ground station when goal is reached
+#define notificationMade (notifyComplete == true);
+#assert Rover() |= [] (isGoalReached -> notificationMade);
+
+// Modified HI1a: Should recharge when batt == 1 and not at goal pos
+#define isRecharging (recharging == true);
+#define isNotAtGoal (!call(isGoal, curr_x, curr_y));
+#define batt1 (batt == 1);
+#assert Rover() |= [] (batt1 && isNotAtGoal && X(stopMovingToCharge) -> X(isRecharging));
+
+// HI1b: Each move reduces battery by 1
+#define batt5 (batt == 5);
+#define batt4 (batt == 4);
+#define batt3 (batt == 3);
+#define batt2 (batt == 2);
+#assert Rover() |= [] (
+    ((batt5 && X(moveUp || moveDown || moveLeft || moveRight)) -> X(batt4)) &&
+    ((batt4 && X(moveUp || moveDown || moveLeft || moveRight)) -> X(batt3)) &&
+    ((batt3 && X(moveUp || moveDown || moveLeft || moveRight)) -> X(batt2)) &&
+    ((batt2 && X(moveUp || moveDown || moveLeft || moveRight)) -> X(batt1))
+);
+
+// HI2a: Rover don't move while recharging and vice versa
+#define mutuallyExclusive (!(moving == true && recharging == true));
+#assert Rover() |= [] mutuallyExclusive;
+
+// HI2b: Rover charges until battery is 5
+#assert Rover() |= [] (
+    (isRecharging && batt1 -> X(batt2)) &&
+    (isRecharging && batt2 -> X(batt3)) &&
+    (isRecharging && batt3 -> X(batt4)) &&
+    (isRecharging && batt4 -> X(batt5))
+);
+
+///////////////////////
+// Assertions for SS2//
+///////////////////////
+// In normal mode, all failure variables are in default state. 
+
+// Failure, Charging, and moving are mutually exclusive
+
+// G7a: The rover encounters a failure AND the rover MUST enter failure mode
+// Inappropriate to use if...then because of case of vacuosly true.
+#define hasFailure (is_rover_damaged == true);
+#define inFailureMode (failureMode == true);
+#assert Rover() |= [] (hasFailure && X(stopMovingToReason) -> X(inFailureMode));
+
+// G7b: In failure mode, robot must have made choice between attempt reboot or request help
+#define hasRebootTried (reboot_tried == true);
+#define hasHelpRequested (failure_notified == true);
+#assert Rover() |= [] (stopMovingToReason -> X(tryReboot || notifyGroundStation));
+#assert Rover() |= [] (tryReboot -> X(hasRebootTried));
+#assert Rover() |= [] (notifyGroundStation -> X(hasHelpRequested));
+
+// CR3a: When the ground station receives failure notification, it should send the `helperID` of the rover that is coming to assist.
+#define helperDispatched (is_helper_sent == true);
+#assert Rover() |= [] (notifyGroundStation -> X(helperDispatched));
+
+// CR3b: The main rover should check it’s ID when the assistant rover arrives
+#define hasHelperAuthenticated (helper_id_authentication_complete == true);
+#assert Rover() |= [] ((arriveHelper2 || arriveHelper3) -> X(hasHelperAuthenticated));
+
+// CR3c: IF "The ID of the assistant rover must be valid" -> receives intervene to recover upon ID check completion. 
+#define correctHelper (helper_id_being_sent == helper_id_authenticating && (helper_id_being_sent == HELPER1_ID || helper_id_being_sent == HELPER2_ID));
+#assert Rover() |= [] (acceptHelp -> correctHelper);
+
+// SL3: At most one of the failure handling leads to rover recover
+#define recoverySucceeded (reboot_success || is_help_accepted);
+#define mutuallyExclusiveHelp (!(reboot_success && is_help_accepted));
+#assert Rover() |= [] (recoverySucceeded -> X(!hasFailure));
+#assert Rover() |= [] (hasFailure -> <> (hasRebootTried || hasHelpRequested)); // Must rover exit failure stage?
+#assert Rover() |= [] mutuallyExclusiveHelp;
 
 
-		
-System = (Init; Rover);
+#assert Rover() deadlockfree;
 
-# define batteryPositive (battery > 0);
-# define atGoal (currentPosition[0] == goal[0] && currentPosition[1] == goal[1]);
-# assert System() reaches atGoal;
-# assert System |= [] batteryPositive;
-# assert System deadlockfree;
+
+
+// Queries to raise
+// 1. "During navigation, the rover encounters a failure" -> Model exactly one failure? 0...n many failures?
+// 2. Once in failure mode, can the rover charge or move. Are charging, moving and failure mutually exclusive? There is no evidence to suggest what is going on here.
+// 3. A seperate flag to indicate rover is reasoning? It seems that it is a state on its own.
+// 4. Must rover exit failure stage?
