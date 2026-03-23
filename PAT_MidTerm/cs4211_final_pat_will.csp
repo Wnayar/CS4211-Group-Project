@@ -1,0 +1,297 @@
+﻿// @@ Planetary Rover Final Model @@
+
+// Planetary environment set-up
+//
+// S = Start (0,0)
+// G = Goal (7,7)
+// X = Obstacles = (1,5), (3,4), (4,6), (5,3)
+// . = Free cell
+//
+//      x →   0   1   2   3   4   5   6   7
+//y=7        .   .   .   .   .   .   .   G
+//y=6        .   .   .   .   X   .   .   .
+//y=5        .   X   .   .   .   .   .   .
+//y=4        .   .   .   X   .   .   .   .
+//y=3        .   .   .   .   .   X   .   .
+//y=2        .   .   .   .   .   .   .   .
+//y=1        .   .   .   .   .   .   .   .
+//y=0        S   .   .   .   .   .   .   .
+
+#define MAX_BATT 5;
+#define MAX_X 7;
+#define MAX_Y 7;
+
+// failure kinds
+#define FAIL_NONE 0;
+#define FAIL_REBOOT 1;
+#define FAIL_HELP 2;
+
+// helper rover IDs
+#define NO_HELPER 0;
+#define HELPER_1 1;
+#define HELPER_2 2;
+
+// fixed environment
+#define isGoal(x,y) ((x==7) && (y==7));
+#define isObstacle(x,y) ((x==1 && y==5) || (x==3 && y==4) || (x==4 && y==6) || (x==5 && y==3));
+#define isInBounds(x, y) ((x >= 0) && (x <= MAX_X) && (y >= 0) && (y <= MAX_Y));
+
+// core variables from current model scenario 1
+var batt = MAX_BATT;
+var curr_x = 0;
+var curr_y = 0;
+var recharging = false;
+var goalReached = false;
+var notifyComplete = false;
+var moving = false;
+
+// new variables for scenario 2 / verification
+var failure = false;             // explicit FailureMode flag
+var failureType = FAIL_NONE;     // FAIL_NONE / FAIL_REBOOT / FAIL_HELP
+var helperID = NO_HELPER;        // 0,1,2
+var failureNotified = false;     // ground station has been notified
+var helpRequested = false;       // requestHelp has occurred
+var authenticated = false;       // helper authentication check passed
+var rebootTried = false;         // reboot path has been attempted
+var interventionDone = false;    // helper intervention completed
+
+Rover() =
+    if (call(isGoal, curr_x, curr_y)) {
+        goalReachedAndNotify{goalReached=true; notifyComplete=true; moving=false;} -> Skip()
+    }
+    else if (failure) {
+        FailureMode()
+    }
+    else if (batt == 1) {
+        stopMoving{moving=false; recharging=true;} -> Charging()
+    }
+    else {
+        startMoving{moving=true;} -> Move()
+    };
+
+Charging() =
+    [batt < MAX_BATT]
+    solarCharge {batt++;} -> Charging()
+    []
+    [batt == MAX_BATT]
+    chargeComplete {recharging=false;} -> Rover();
+
+Move() =
+    [!call(isObstacle, curr_x, curr_y+1) && call(isInBounds, curr_x, curr_y+1) && moving]
+    moveUp{curr_y++; batt--;} -> PostMove()
+    []
+    [!call(isObstacle, curr_x, curr_y-1) && call(isInBounds, curr_x, curr_y-1) && moving]
+    moveDown{curr_y--; batt--;} -> PostMove()
+    []
+    [!call(isObstacle, curr_x-1, curr_y) && call(isInBounds, curr_x-1, curr_y) && moving]
+    moveLeft{curr_x--; batt--;} -> PostMove()
+    []
+    [!call(isObstacle, curr_x+1, curr_y) && call(isInBounds, curr_x+1, curr_y) && moving]
+    moveRight{curr_x++; batt--;} -> PostMove();
+
+// exactly one post-move outcome:
+// no failure / reboot failure / help failure (helper 1) / help failure (helper 2)
+PostMove() =
+    [call(isGoal, curr_x, curr_y)]
+    Rover()
+    []
+    [!call(isGoal, curr_x, curr_y)]
+    (
+        noFailure{moving=false;} -> Rover()
+
+        []
+
+        enterFailureMode -> triggerRebootFailure{
+            moving=false;
+            failure=true;
+            failureType=FAIL_REBOOT;
+            helperID=NO_HELPER;
+            failureNotified=false;
+            helpRequested=false;
+            authenticated=false;
+            rebootTried=false;
+            interventionDone=false;
+        } -> Rover()
+
+        []
+
+        enterFailureMode -> triggerHelpFailure{
+            moving=false;
+            failure=true;
+            failureType=FAIL_HELP;
+            helperID=HELPER_1;
+            failureNotified=false;
+            helpRequested=false;
+            authenticated=false;
+            rebootTried=false;
+            interventionDone=false;
+        } -> Rover()
+
+        []
+
+        enterFailureMode -> triggerHelpFailure{
+            moving=false;
+            failure=true;
+            failureType=FAIL_HELP;
+            helperID=HELPER_2;
+            failureNotified=false;
+            helpRequested=false;
+            authenticated=false;
+            rebootTried=false;
+            interventionDone=false;
+        } -> Rover()
+    );
+
+// failure mode behavior
+FailureMode() =
+    [failure && failureType == FAIL_REBOOT]
+    tryReboot{rebootTried=true;} -> rebootRecover{
+        failure=false;
+        failureType=FAIL_NONE;
+        helperID=NO_HELPER;
+        failureNotified=false;
+        helpRequested=false;
+        authenticated=false;
+        rebootTried=false;
+        interventionDone=false;
+    } -> Rover()
+
+    []
+
+    [failure && failureType == FAIL_HELP && !failureNotified]
+    notifyFailure{failureNotified=true;} -> FailureMode()
+
+    []
+
+    [failure && failureType == FAIL_HELP && failureNotified && !helpRequested]
+    requestHelp{helpRequested=true;} -> FailureMode()
+
+    []
+
+    [failure && failureType == FAIL_HELP && helpRequested && helperID == HELPER_1 && !authenticated]
+    helperArrives1 -> authenticateHelper{authenticated=true;} -> FailureMode()
+
+    []
+
+    [failure && failureType == FAIL_HELP && helpRequested && helperID == HELPER_2 && !authenticated]
+    helperArrives2 -> authenticateHelper{authenticated=true;} -> FailureMode()
+
+    []
+
+    [failure && failureType == FAIL_HELP && authenticated]
+    intervene{
+        interventionDone=true;
+        failure=false;
+        failureType=FAIL_NONE;
+        helperID=NO_HELPER;
+        failureNotified=false;
+        helpRequested=false;
+        authenticated=false;
+        rebootTried=false;
+        interventionDone=false;
+    } -> Rover();
+
+
+// Assertions
+
+// Scenario 1
+// SL1: battery never 0
+#define batteryPositive (batt > 0);
+#assert Rover() |= [] batteryPositive;
+
+// SL2: Goal is reachable
+#define isGoalReached (goalReached == true);
+#assert Rover() reaches isGoalReached;
+
+// the trace above dfs, prob due to pat optimzation doesnt show the fail events, below can show a bit, ebcause we do non determinstic
+#define rebootFailureSeen (failure == true && failureType == FAIL_REBOOT);
+#assert Rover() reaches rebootFailureSeen;
+
+#define authenticatedSeen (authenticated == true);
+#assert Rover() reaches authenticatedSeen;
+
+// SL4: Rover position never on obstacle
+#define neverOnObstacle (!call(isObstacle, curr_x, curr_y));
+#assert Rover() |= [] neverOnObstacle;
+
+// Slightly modified V2: Never out of bounds and no obstacle at goal
+#define V2 ((call(isInBounds, curr_x, curr_y) && !call(isObstacle, 7, 7)));
+#assert Rover() |= [] V2;
+
+// G6: notify ground station when goal is reached
+#define notificationMade (notifyComplete == true);
+#define G6 (isGoalReached && notificationMade);
+#assert Rover() reaches G6;
+
+// Modified HI1a: Should recharge when batt == 1 and not at goal pos
+#define isNotAtGoal (!call(isGoal, curr_x, curr_y));
+#define batt1 (batt == 1);
+#assert Rover() |= [] (batt1 && isNotAtGoal && stopMoving -> X(solarCharge));
+
+// HI1b: Each move reduces battery by 1
+#define batt5 (batt == 5);
+#define batt4 (batt == 4);
+#define batt3 (batt == 3);
+#define batt2 (batt == 2);
+#assert Rover() |= [] (
+    ((batt5 && X(moveUp || moveDown || moveLeft || moveRight)) -> X(batt4)) &&
+    ((batt4 && X(moveUp || moveDown || moveLeft || moveRight)) -> X(batt3)) &&
+    ((batt3 && X(moveUp || moveDown || moveLeft || moveRight)) -> X(batt2)) &&
+    ((batt2 && X(moveUp || moveDown || moveLeft || moveRight)) -> X(batt1))
+);
+
+// HI2a: Rover don't move while recharging and vice versa
+#define mutuallyExclusive (!(moving == true && recharging == true));
+#assert Rover() |= [] mutuallyExclusive;
+
+// HI2b: Rover charges until battery is 5
+#define isRecharging (recharging == true);
+#assert Rover() |= [] (
+    (isRecharging && batt1 -> X(batt2)) &&
+    (isRecharging && batt2 -> X(batt3)) &&
+    (isRecharging && batt3 -> X(batt4)) &&
+    (isRecharging && batt4 -> X(batt5))
+);
+
+
+// Scernario 2
+// helperID must always be valid
+#define validHelperID ((helperID == NO_HELPER) || (helperID == HELPER_1) || (helperID == HELPER_2));
+#assert Rover() |= [] validHelperID;
+
+// G7a: If failure occurs, rover eventually exits failure mode
+#define inFailureMode (failure == true);
+#define recovered (!failure);
+#assert Rover() |= [] (inFailureMode -> <> recovered);
+
+// G7b: Reboot failure eventually leads to a reboot attempt
+#define rebootFailure ((failure == true) && (failureType == FAIL_REBOOT));
+#define rebootWasTried (rebootTried == true);
+#assert Rover() |= [] (rebootFailure -> <> rebootWasTried);
+
+// G7c: Help failure eventually notifies the ground station
+#define helpFailure ((failure == true) && (failureType == FAIL_HELP));
+#define groundNotified (failureNotified == true);
+#assert Rover() |= [] (helpFailure -> <> groundNotified);
+
+// SL3a: If help failure occurs, help is eventually requested
+#define helpWasRequested (helpRequested == true);
+#assert Rover() |= [] (helpFailure -> <> helpWasRequested);
+
+// CR3a: Authentication only happens when helperID is valid
+#define authenticatedState (authenticated == true);
+#define helperValidForAuth ((helperID == HELPER_1) || (helperID == HELPER_2));
+#assert Rover() |= [] (authenticatedState -> helperValidForAuth);
+
+// CR3b: If help path is taken, authentication eventually happens
+#assert Rover() |= [] (helpFailure -> <> authenticatedState);
+
+// SL3b / CR3c: Help failure path eventually recovers
+#assert Rover() |= [] (helpFailure -> <> recovered);
+
+// Additional sanity: rover does not move while in failure mode
+#define noMoveDuringFailure (!(moving == true && failure == true));
+#assert Rover() |= [] noMoveDuringFailure;
+
+// Deadlock freedom
+#assert Rover() deadlockfree;
