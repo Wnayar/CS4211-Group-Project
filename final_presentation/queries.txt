@@ -1,0 +1,7 @@
+1. If the rover is damaged at the goal location, do we send notifyComplete to ground station OR fix rover first then notifyComplete?
+
+2. Can the rover be forever in failed state?
+2a. If reboot fails, do we force send help notification to ground station or try rebooting again?
+2b. If help sent fails (because wrong rover arrived to help), do we try rebooting again OR send help notification again OR force send the correct rover?
+
+3. Do witness trace of reaching goal need to show failure OR is it ok to show this in a seperate assertion?
