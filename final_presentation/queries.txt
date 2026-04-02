@@ -1,7 +1,11 @@
 3. Do witness trace of reaching goal need to show failure OR is it ok to show this in a seperate assertion? <To be described on screen by Will>
+there is a tool
 2. Presentation needs to detail what was done in midterm presentation or simply do handwavy explanation and emphaise on the changes?
+Focus on 2
 3. Is it better to show asserstions as "eventually" or to show a precise step-by-step movement?
+step by step
 4. Once in failure mode, can the rover charge or move. Are charging, moving and failure mutually exclusive?
+Must fix first
 
 <Answered>
 1. If the rover is damaged at the goal location, do we send notifyComplete to ground station OR fix rover first then notifyComplete?

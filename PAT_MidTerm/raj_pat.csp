@@ -105,9 +105,8 @@ Damageable() =
 Reason() = 
 	tryReboot{reboot_tried = true;} -> RebootResult()
 	[]
-	notifyGroundStation{failure_notified = true;} -> WaitForHelp(); // flag name is correct
+	notifyGroundStation{failure_notified = true;} -> WaitForHelp();
 
-//AttemptReboot() = tryReboot{reboot_tried = true;} -> RebootResult();
 
 RebootResult() =
 	rebootPass{
@@ -116,11 +115,6 @@ RebootResult() =
 	[]
 	Reason();
 
-
-//RequestHelp() =
-//	notifyGroundStation{
-//		failure_notified = true;
-//	} -> WaitForHelp();
 	
 WaitForHelp() =
 	sendHelper1{
@@ -134,12 +128,12 @@ WaitForHelp() =
 	} -> HelperArrives();
 
 HelperArrives() =
-	arriveHelper2{
+	arriveHelper1{
 		helper_arrived = true;
 		helper_id_authenticating = HELPER1_ID;
 	} -> AuthenticateHelper()
 	[]
-	arriveHelper3{
+	arriveHelper2{
 		helper_arrived = true;
 		helper_id_authenticating = HELPER2_ID;
 	} -> AuthenticateHelper();
@@ -177,7 +171,7 @@ Heal() =
 		helper_id_authentication_complete = false;
 		is_helper_id_authentic = false;
 		is_help_accepted = false;
-	} -> Rover();
+	} -> Damageable(); //Did this b/c rover may damage again immediately after heal
 
 // Assertions
 
@@ -219,9 +213,7 @@ Heal() =
     ((batt2 && X(moveUp || moveDown || moveLeft || moveRight)) -> X(batt1))
 );
 
-// HI2a: Rover don't move while recharging and vice versa
-#define mutuallyExclusive (!(moving == true && recharging == true));
-#assert Rover() |= [] mutuallyExclusive;
+
 
 // HI2b: Rover charges until battery is 5
 #assert Rover() |= [] (
@@ -234,9 +226,14 @@ Heal() =
 ///////////////////////
 // Assertions for SS2//
 ///////////////////////
-// In normal mode, all failure variables are in default state. 
-
 // Failure, Charging, and moving are mutually exclusive
+// HI2a: Rover don't move while recharging and vice versa
+#define mutuallyExclusiveMoveRecharge (!(moving == true && recharging == true));
+#define mutuallyExclusiveMoveFail (!(moving == true && failureMode == true));
+#define mutuallyExclusiveFailRecharge (!(failureMode == true && recharging == true));
+#assert Rover() |= [] mutuallyExclusiveMoveRecharge;
+#assert Rover() |= [] mutuallyExclusiveMoveFail;
+#assert Rover() |= [] mutuallyExclusiveFailRecharge;
 
 // G7a: The rover encounters a failure AND the rover MUST enter failure mode
 // Inappropriate to use if...then because of case of vacuosly true.
@@ -257,29 +254,37 @@ Heal() =
 
 // CR3b: The main rover should check it’s ID when the assistant rover arrives
 #define hasHelperAuthenticated (helper_id_authentication_complete == true);
-#assert Rover() |= [] ((arriveHelper2 || arriveHelper3) -> X(hasHelperAuthenticated));
+#assert Rover() |= [] ((arriveHelper1 || arriveHelper2) -> X(hasHelperAuthenticated));
 
 // CR3c: IF "The ID of the assistant rover must be valid" -> receives intervene to recover upon ID check completion. 
-#define correctHelper (helper_id_being_sent == helper_id_authenticating && (helper_id_being_sent == HELPER1_ID || helper_id_being_sent == HELPER2_ID));
-#assert Rover() |= [] (acceptHelp -> correctHelper);
+#define isValidHelperAuthenticating (helper_id_authenticating == HELPER1_ID || helper_id_authenticating == HELPER2_ID);
+#define isValidHelperSent (helper_id_being_sent == HELPER1_ID || helper_id_being_sent == HELPER2_ID);
+#define correctHelper (helper_id_being_sent == helper_id_authenticating);
+#assert Rover() |= [] (isValidHelperAuthenticating && isValidHelperSent && correctHelper && checkHelperId -> X(acceptHelp));
 
 // SL3: At most one of the failure handling leads to rover recover
 #define recoverySucceeded (reboot_success || is_help_accepted);
 #define mutuallyExclusiveHelp (!(reboot_success && is_help_accepted));
 #assert Rover() |= [] (recoverySucceeded -> X(!hasFailure));
-#assert Rover() |= [] (hasFailure -> <> (hasRebootTried || hasHelpRequested)); // Must rover exit failure stage?
+#assert Rover() |= [] (hasFailure -> <> (hasRebootTried || hasHelpRequested));
 #assert Rover() |= [] mutuallyExclusiveHelp;
+
+// Check that heal is done properly
+#define is_properly_healed_switch_failure_mode_off (is_rover_damaged == false && failureMode==false);
+#define is_properly_healed (
+	failureMode == false && reboot_tried == false && 
+	failure_notified == false && reboot_success == false && 
+	is_helper_sent == false && helper_id_being_sent == 0 &&
+	helper_arrived == false && helper_id_authenticating == 0 &&
+	helper_id_authentication_complete == false && is_helper_id_authentic == false &&
+	is_help_accepted == false);
+#assert Rover() |= [] (resetRoverSystem && is_properly_healed_switch_failure_mode_off -> X(is_properly_healed));
 
 
 #assert Rover() deadlockfree;
 
 
 
-// Queries to raise
-// 2. Once in failure mode, can the rover charge or move. Are charging, moving and failure mutually exclusive? There is no evidence to suggest what is going on here.
-// 3. A seperate flag to indicate rover is reasoning? It seems that it is a state on its own.
 
 
-// No help is 0
-// Verification for fail then goal reached
-// damage when meeting obstacle
+
