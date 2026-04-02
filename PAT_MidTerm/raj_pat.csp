@@ -171,7 +171,7 @@ Heal() =
 		helper_id_authentication_complete = false;
 		is_helper_id_authentic = false;
 		is_help_accepted = false;
-	} -> Damageable(); //Did this b/c rover may damage again immediately after heal
+	} -> Rover(); 
 
 // Assertions
 
@@ -278,7 +278,7 @@ Heal() =
 	helper_arrived == false && helper_id_authenticating == 0 &&
 	helper_id_authentication_complete == false && is_helper_id_authentic == false &&
 	is_help_accepted == false);
-#assert Rover() |= [] (resetRoverSystem && is_properly_healed_switch_failure_mode_off -> X(is_properly_healed));
+#assert Rover() |= [] (resetRoverSystem -> X(is_properly_healed_switch_failure_mode_off && is_properly_healed));
 
 
 #assert Rover() deadlockfree;
