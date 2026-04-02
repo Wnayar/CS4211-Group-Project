@@ -98,7 +98,7 @@ Move() =
 //////////////////////
 Damageable() =
 	noDamage -> Rover()
-	[]
+	<>
 	damageRover{is_rover_damaged = true;} -> Rover();
 
 
