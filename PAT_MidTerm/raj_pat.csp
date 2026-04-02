@@ -276,18 +276,10 @@ Heal() =
 
 
 // Queries to raise
-// 1. "During navigation, the rover encounters a failure" -> Model exactly one failure? 0...n many failures?
 // 2. Once in failure mode, can the rover charge or move. Are charging, moving and failure mutually exclusive? There is no evidence to suggest what is going on here.
 // 3. A seperate flag to indicate rover is reasoning? It seems that it is a state on its own.
-// 4. Must rover exit failure stage?
 
 
 // No help is 0
 // Verification for fail then goal reached
 // damage when meeting obstacle
-
-
-// Questions to ask:
-// If rover and goal and is damaged, then send complete notification OR send damage help notification?
-// If reboot fails, go to ask help, or try rebooting again? -> Assume side rover alaays works for now. -> If wrong rover also send, then force the other rover id to be sent? Then how deep will this recurse?
-// Does witness trace of reaching goal need to show failure OR is it ok to dhow this in a seperate assertion?
