@@ -193,13 +193,13 @@ Heal() =
 
 // G6: notify ground station when goal is reached
 #define notificationMade (notifyComplete == true);
-#assert Rover() |= [] (isGoalReached -> notificationMade);
+#define G6 (isGoalReached && notificationMade);
+#assert Rover() reaches G6;
 
 // Modified HI1a: Should recharge when batt == 1 and not at goal pos
-#define isRecharging (recharging == true);
 #define isNotAtGoal (!call(isGoal, curr_x, curr_y));
 #define batt1 (batt == 1);
-#assert Rover() |= [] (batt1 && isNotAtGoal && X(stopMovingToCharge) -> X(isRecharging));
+#assert Rover() |= [] (batt1 && isNotAtGoal && (stopMovingToCharge) -> X(solarCharge));
 
 // HI1b: Each move reduces battery by 1
 #define batt5 (batt == 5);
@@ -213,9 +213,8 @@ Heal() =
     ((batt2 && X(moveUp || moveDown || moveLeft || moveRight)) -> X(batt1))
 );
 
-
-
 // HI2b: Rover charges until battery is 5
+#define isRecharging (recharging == true);
 #assert Rover() |= [] (
     (isRecharging && batt1 -> X(batt2)) &&
     (isRecharging && batt2 -> X(batt3)) &&
@@ -226,8 +225,9 @@ Heal() =
 ///////////////////////
 // Assertions for SS2//
 ///////////////////////
-// Failure, Charging, and moving are mutually exclusive
+
 // HI2a: Rover don't move while recharging and vice versa
+// HI2a Extended: Failure, Charging, and Moving are mutually exclusive
 #define mutuallyExclusiveMoveRecharge (!(moving == true && recharging == true));
 #define mutuallyExclusiveMoveFail (!(moving == true && failureMode == true));
 #define mutuallyExclusiveFailRecharge (!(failureMode == true && recharging == true));
@@ -235,8 +235,7 @@ Heal() =
 #assert Rover() |= [] mutuallyExclusiveMoveFail;
 #assert Rover() |= [] mutuallyExclusiveFailRecharge;
 
-// G7a: The rover encounters a failure AND the rover MUST enter failure mode
-// Inappropriate to use if...then because of case of vacuosly true.
+// G7a: If the rover encounters a failure, the rover MUST enter failure mode
 #define hasFailure (is_rover_damaged == true);
 #define inFailureMode (failureMode == true);
 #assert Rover() |= [] (hasFailure && X(stopMovingToReason) -> X(inFailureMode));
@@ -245,8 +244,8 @@ Heal() =
 #define hasRebootTried (reboot_tried == true);
 #define hasHelpRequested (failure_notified == true);
 #assert Rover() |= [] (stopMovingToReason -> X(tryReboot || notifyGroundStation));
-#assert Rover() |= [] (tryReboot -> X(hasRebootTried));
-#assert Rover() |= [] (notifyGroundStation -> X(hasHelpRequested));
+#assert Rover() |= [] (tryReboot -> (hasRebootTried));
+#assert Rover() |= [] (notifyGroundStation -> (hasHelpRequested));
 
 // CR3a: When the ground station receives failure notification, it should send the `helperID` of the rover that is coming to assist.
 #define helperDispatched (is_helper_sent == true);
@@ -278,6 +277,5 @@ Heal() =
 	helper_id_authentication_complete == false && is_helper_id_authentic == false &&
 	is_help_accepted == false && is_rover_damaged == false && failureMode==false);
 #assert Rover() |= [] (resetRoverSystem -> is_properly_healed);
-
 
 #assert Rover() deadlockfree;
