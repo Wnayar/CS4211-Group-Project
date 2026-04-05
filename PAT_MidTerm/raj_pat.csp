@@ -248,9 +248,10 @@ Heal() =
 
 // Check that heal is done properly
 #define is_properly_healed (
-	failureMode == false && reboot_success == false && 
-	helper_id_authenticating == 0 && is_helper_id_authentic == false &&
-	is_help_accepted == false && is_rover_damaged == false && failureMode==false);
+	reboot_success == false && helper_id_being_sent == 0 && 
+	helper_id_authenticating == 0 && is_helper_id_authentic == false && 
+	is_help_accepted == false && is_rover_damaged == false && failureMode == false
+	);
 #assert Rover() |= [] (resetRoverSystem -> is_properly_healed);
 
 
