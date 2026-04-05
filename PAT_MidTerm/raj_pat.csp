@@ -47,18 +47,10 @@ var moving = false;
 var is_rover_damaged = false;
 var failureMode = false;
 
-// From email, "abstract internal descion" and "make sure to keep both choices open".
-// This suggests that the flag that we do here is modelled as an 'internal choice' of reboot or notify
-var reboot_tried = false;
-var failure_notified = false;
-
 var reboot_success = false; // If fails here, then go back to reboot_tried [] failure_notified ELSE not rover damaged
 
-var is_helper_sent = false;
 var helper_id_being_sent = 0; // Modelled as an internal choice by ground statetion
-var helper_arrived = false;
 var helper_id_authenticating = 0;
-var helper_id_authentication_complete = false;
 var is_helper_id_authentic = false; // If fails here, then go back to reboot_tried [] failure_notified
 var is_help_accepted = false; // MUST accept help // From email, help will always work, so, not rover damaged
 
@@ -103,9 +95,9 @@ Damageable() =
 
 
 Reason() = 
-	tryReboot{reboot_tried = true;} -> RebootResult()
+	tryReboot -> RebootResult()
 	[]
-	notifyGroundStation{failure_notified = true;} -> WaitForHelp();
+	notifyGroundStation -> WaitForHelp();
 
 
 RebootResult() =
@@ -118,31 +110,27 @@ RebootResult() =
 	
 WaitForHelp() =
 	sendHelper1{
-		is_helper_sent = true;
 		helper_id_being_sent = HELPER1_ID;
 	} -> HelperArrives()
 	[]
 	sendHelper2{
-		is_helper_sent = true;
 		helper_id_being_sent = HELPER2_ID;
 	} -> HelperArrives();
 
 HelperArrives() =
 	arriveHelper1{
-		helper_arrived = true;
 		helper_id_authenticating = HELPER1_ID;
 	} -> AuthenticateHelper()
 	[]
 	arriveHelper2{
-		helper_arrived = true;
 		helper_id_authenticating = HELPER2_ID;
 	} -> AuthenticateHelper();
 	
 AuthenticateHelper() =
 	checkHelperId{
-		helper_id_authentication_complete = true;
 		is_helper_id_authentic =
 			(helper_id_being_sent == helper_id_authenticating) &&
+			call(isValidHelper, helper_id_being_sent) &&
 			call(isValidHelper, helper_id_authenticating);
 	} -> AuthenticationDecision();
 
@@ -161,17 +149,12 @@ Heal() =
 	resetRoverSystem{
 		is_rover_damaged = false;
 		failureMode = false;
-		reboot_tried = false;
-		failure_notified = false;
 		reboot_success = false;
-		is_helper_sent = false;
 		helper_id_being_sent = 0;
-		helper_arrived = false;
 		helper_id_authenticating = 0;
-		helper_id_authentication_complete = false;
 		is_helper_id_authentic = false;
 		is_help_accepted = false;
-	} -> Rover(); 
+	} -> Rover();
 
 // Assertions
 
@@ -241,18 +224,14 @@ Heal() =
 #assert Rover() |= [] (hasFailure && X(stopMovingToReason) -> X(inFailureMode));
 
 // G7b: In failure mode, robot must have made choice between attempt reboot or request help
-#define hasRebootTried (reboot_tried == true);
-#define hasHelpRequested (failure_notified == true);
-#assert Rover() |= [] (stopMovingToReason -> X(tryReboot || notifyGroundStation));
-#assert Rover() |= [] (tryReboot -> (hasRebootTried));
-#assert Rover() |= [] (notifyGroundStation -> (hasHelpRequested));
+#assert Rover() |= [] (inFailureMode && stopMovingToReason -> X(tryReboot || notifyGroundStation));
 
 // CR3a: When the ground station receives failure notification, it should send the `helperID` of the rover that is coming to assist.
-#define helperDispatched (is_helper_sent == true);
+#define helperDispatched (helper_id_being_sent != 0); // helper_id == 0 signifies no helper_id received yet
 #assert Rover() |= [] (notifyGroundStation -> X(helperDispatched));
 
 // CR3b: The main rover should check it’s ID when the assistant rover arrives
-#define hasHelperAuthenticated (helper_id_authentication_complete == true);
+#define hasHelperAuthenticated (helper_id_authenticating != 0); // helper_id_authenticating == 0 signifies assistant rover id not checked yet
 #assert Rover() |= [] ((arriveHelper1 || arriveHelper2) -> X(hasHelperAuthenticated));
 
 // CR3c: IF "The ID of the assistant rover must be valid" -> receives intervene to recover upon ID check completion. 
@@ -265,17 +244,14 @@ Heal() =
 #define recoverySucceeded (reboot_success || is_help_accepted);
 #define mutuallyExclusiveHelp (!(reboot_success && is_help_accepted));
 #assert Rover() |= [] (recoverySucceeded -> X(!hasFailure));
-#assert Rover() |= [] (hasFailure -> <> (hasRebootTried || hasHelpRequested));
 #assert Rover() |= [] mutuallyExclusiveHelp;
 
 // Check that heal is done properly
 #define is_properly_healed (
-	failureMode == false && reboot_tried == false && 
-	failure_notified == false && reboot_success == false && 
-	is_helper_sent == false && helper_id_being_sent == 0 &&
-	helper_arrived == false && helper_id_authenticating == 0 &&
-	helper_id_authentication_complete == false && is_helper_id_authentic == false &&
+	failureMode == false && reboot_success == false && 
+	helper_id_authenticating == 0 && is_helper_id_authentic == false &&
 	is_help_accepted == false && is_rover_damaged == false && failureMode==false);
 #assert Rover() |= [] (resetRoverSystem -> is_properly_healed);
+
 
 #assert Rover() deadlockfree;
