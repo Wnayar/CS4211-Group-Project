@@ -105,7 +105,7 @@ RebootResult() =
 		reboot_success = true;
 	} -> Heal()
 	[]
-	Reason();
+	rebootFail -> Reason();
 
 	
 WaitForHelp() =
@@ -240,11 +240,18 @@ Heal() =
 #define correctHelper (helper_id_being_sent == helper_id_authenticating);
 #assert Rover() |= [] (isValidHelperAuthenticating && isValidHelperSent && correctHelper && checkHelperId -> X(acceptHelp));
 
-// SL3: At most one of the failure handling leads to rover recover
+// SL3: Rover shall react appropriately to failures
+// SL3a: At most one of the failure handling leads to rover recover
 #define recoverySucceeded (reboot_success || is_help_accepted);
 #define mutuallyExclusiveHelp (!(reboot_success && is_help_accepted));
 #assert Rover() |= [] (recoverySucceeded -> X(!hasFailure));
 #assert Rover() |= [] mutuallyExclusiveHelp;
+
+// SL3b: If help fail -> Reason again
+#assert Rover() |= [] (rejectHelp -> X(tryReboot || notifyGroundStation));
+
+// SL3c: If reboot fail -> Reason again
+#assert Rover() |= [] (rebootFail -> X(tryReboot || notifyGroundStation));
 
 // Check that heal is done properly
 #define is_properly_healed (
