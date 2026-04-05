@@ -20,14 +20,14 @@
 #define MAX_BATT 5;
 #define MAX_X 7;
 #define MAX_Y 7;
-#define HELPER1_ID 2;
-#define HELPER2_ID 3;
+#define HELPER1_ID 1;
+#define HELPER2_ID 2;
 
 #define isGoal(x,y) ((x==7) && (y==7));
 #define isObstacle(x,y) ((x==1 && y==5) || (x==3 && y==4) || (x==4 && y==6) || (x==5 && y==3));
 #define isInBounds(x, y) ((x >= 0) && (x <= MAX_X) && (y >= 0) && (y <= MAX_Y));
 
-#define isValidHelper(id) ((id==2) || (id==3));
+#define isValidHelper(id) ((id==1) || (id==2));
 
 var batt = MAX_BATT;
 var curr_x = 0;
@@ -282,9 +282,4 @@ Heal() =
 
 
 #assert Rover() deadlockfree;
-
-
-
-
-
 
