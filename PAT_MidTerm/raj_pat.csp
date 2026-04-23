@@ -242,9 +242,9 @@ Heal() =
 
 // SL3: Rover shall react appropriately to failures
 // SL3a: At most one of the failure handling leads to rover recover
-#define recoverySucceeded (reboot_success || is_help_accepted);
+#define failureHandled (reboot_success || is_help_accepted);
 #define mutuallyExclusiveHelp (!(reboot_success && is_help_accepted));
-#assert Rover() |= [] (recoverySucceeded -> X(!hasFailure));
+#assert Rover() |= [] (failureHandled -> X(!hasFailure));
 #assert Rover() |= [] mutuallyExclusiveHelp;
 
 // SL3b: If help fail -> Reason again
@@ -253,7 +253,7 @@ Heal() =
 // SL3c: If reboot fail -> Reason again
 #assert Rover() |= [] (rebootFail -> X(tryReboot || notifyGroundStation));
 
-// Check that heal is done properly
+// SL3d: Check that heal is done properly
 #define is_properly_healed (
 	reboot_success == false && helper_id_being_sent == 0 && 
 	helper_id_authenticating == 0 && is_helper_id_authentic == false && 
